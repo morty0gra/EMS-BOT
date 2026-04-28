@@ -2,12 +2,17 @@ const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle,
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
-const { createCanvas, loadImage } = require('canvas');
+const { createCanvas, loadImage, registerFont } = require('canvas');
 
 // ================= USTAWIENIA =================
 const BOT_TOKEN = process.env.BOT_TOKEN; 
 const PORT = process.env.PORT || 3000;
 // ==============================================
+
+// Wczytanie czcionki odręcznej z pliku font.ttf
+if (fs.existsSync('./font.ttf')) {
+    registerFont('./font.ttf', { family: 'RecznePismo' });
+}
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const app = express();
@@ -75,8 +80,10 @@ app.post('/api/akt-zgonu', async (req, res) => {
         const ctx = canvas.getContext('2d');
         
         ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
-        ctx.font = '36px "Comic Sans MS", cursive, sans-serif'; 
-        ctx.fillStyle = '#1e3a8a'; 
+        
+        // Zastosowanie naszej nowej czcionki z pliku
+        ctx.font = '40px "RecznePismo", sans-serif'; 
+        ctx.fillStyle = '#1e3a8a'; // Kolor ciemnoniebieskiego długopisu
         
         const sygnatura = `AG-${new Date().getFullYear()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
 
@@ -91,12 +98,13 @@ app.post('/api/akt-zgonu', async (req, res) => {
         ctx.fillText(data.miejsceZgonu, 440, 585);
         ctx.fillText(data.typMiejsca, 240, 625); 
         
-        ctx.font = '28px "Comic Sans MS", cursive, sans-serif'; 
+        // Mniejsza czcionka do opisów obrażeń
+        ctx.font = '32px "RecznePismo", sans-serif'; 
         ctx.fillText(data.bezposrednia, 80, 710);
         ctx.fillText(data.wyjsciowa, 80, 780);
         ctx.fillText(data.opis, 80, 850);
         
-        ctx.font = '36px "Comic Sans MS", cursive, sans-serif';
+        ctx.font = '40px "RecznePismo", sans-serif';
         ctx.fillText(data.sekcja === 'TAK' ? 'X' : '', 450, 955); 
         ctx.fillText(data.sekcja === 'NIE' ? 'X' : '', 560, 955); 
 
