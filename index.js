@@ -5,7 +5,7 @@ const fs = require('fs');
 
 // ================= USTAWIENIA =================
 // TUTAJ WPISZ NOWY TOKEN SWOJEGO BOTA (Zakładka "Bot" -> "Reset Token")
-const BOT_TOKEN = '-GZNG2EhaVMxC9XwaCL0l9890Y2-dzC1'; 
+const BOT_TOKEN = 'lI6YQ_JAbXHFrRE4WJ8SRQ-gTAm4rMwj'; 
 const PORT = process.env.PORT || 3000;
 // ==============================================
 
