@@ -9,7 +9,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 3000;
 // ==============================================
 
-// Wczytanie czcionki odręcznej
+// Wczytanie czcionki odręcznej z pliku font.ttf (musi istnieć w repozytorium)
 if (fs.existsSync('./font.ttf')) {
     registerFont('./font.ttf', { family: 'RecznePismo' });
 }
@@ -20,16 +20,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Baza danych
+// Baza danych kanałów
 const CONFIG_FILE = './config.json';
 let channelsConfig = { podania: null, wyniki: null, aktZgonu: null };
-if (fs.existsSync(CONFIG_FILE)) { channelsConfig = JSON.parse(fs.readFileSync(CONFIG_FILE)); } 
-else { fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig)); }
+if (fs.existsSync(CONFIG_FILE)) {
+    channelsConfig = JSON.parse(fs.readFileSync(CONFIG_FILE));
+} else {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig));
+}
 
+// Baza danych kont
 const KONTA_FILE = './konta.json';
 let kontaConfig = {};
-if (fs.existsSync(KONTA_FILE)) { kontaConfig = JSON.parse(fs.readFileSync(KONTA_FILE)); } 
-else { kontaConfig = { "Zarzad": "EMS123" }; fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig)); }
+if (fs.existsSync(KONTA_FILE)) {
+    kontaConfig = JSON.parse(fs.readFileSync(KONTA_FILE));
+} else {
+    kontaConfig = { "Zarzad": "EMS123" }; 
+    fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig));
+}
 
 // --- API 1: PODAŃ ---
 app.post('/api/apply', async (req, res) => {
@@ -42,17 +50,23 @@ app.post('/api/apply', async (req, res) => {
         );
         await hrChannel.send({ embeds: req.body.embeds, components: [row] });
         res.status(200).send({ message: 'Wysłano' });
-    } catch (e) { res.status(500).send({ error: 'Błąd serwera' }); }
+    } catch (e) { 
+        console.error(e);
+        res.status(500).send({ error: 'Błąd serwera' }); 
+    }
 });
 
 // --- API 2: LOGOWANIE ---
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-    if (kontaConfig[username] && kontaConfig[username] === password) res.status(200).send({ success: true });
-    else res.status(401).send({ success: false });
+    if (kontaConfig[username] && kontaConfig[username] === password) {
+        res.status(200).send({ success: true });
+    } else {
+        res.status(401).send({ success: false });
+    }
 });
 
-// --- API 3: AKT ZGONU (SZTYWNE ZGNIATANIE GRAFIKI) ---
+// --- API 3: AKT ZGONU (GENERATOR GIGANTYCZNEGO TEKSTU X5) ---
 app.post('/api/akt-zgonu', async (req, res) => {
     try {
         if (!channelsConfig.aktZgonu) return res.status(400).send({ error: 'Brak kanału!' });
@@ -62,61 +76,59 @@ app.post('/api/akt-zgonu', async (req, res) => {
         const baseImage = await loadImage('./akt_base.png');
         const stampImage = await loadImage('./stamp.png');
         
-        // SZTYWNE WYMIARY (Wymuszamy na obrazku bycie normalną kartką A4)
-        const W = 1200;
-        const H = 1600;
-        const canvas = createCanvas(W, H);
+        const canvas = createCanvas(baseImage.width, baseImage.height);
         const ctx = canvas.getContext('2d');
         
-        // Wciskamy Twoje tło w sztywne wymiary 1200x1600!
-        ctx.drawImage(baseImage, 0, 0, W, H);
+        ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
         
-        // Ustawiamy potężną czcionkę 40px (zapasowy sans-serif jakby font zniknął)
-        ctx.font = '40px "RecznePismo", sans-serif'; 
+        const W = canvas.width;
+        const H = canvas.height;
+        
+        // GIGANTYCZNY ROZMIAR CZCIONKI (Ustawione na 5.0 - 500% wysokości obrazka)
+        const baseFontSize = Math.floor(H * 5.0); 
+        ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
         ctx.fillStyle = '#1e3a8a'; 
         
         const sygnatura = `AG-${new Date().getFullYear()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
 
-        // Rysujemy na SZTYWNYCH punktach X i Y
-        ctx.fillText(sygnatura, 550, 430); 
+        // Rysowanie tekstu na proporcjonalnych współrzędnych
+        ctx.fillText(sygnatura, W * 0.46, H * 0.28); 
         
-        // CZĘŚĆ I
-        ctx.fillText(data.imie, 160, 520); 
-        ctx.fillText(data.nazwisko, 710, 520);
-        ctx.fillText(data.dataUr, 340, 560);
-        ctx.fillText(data.ssn, 460, 600);
-        ctx.fillText(data.adres, 500, 640);
+        ctx.fillText(data.imie, W * 0.13, H * 0.33); 
+        ctx.fillText(data.nazwisko, W * 0.58, H * 0.33);
+        ctx.fillText(data.dataUr, W * 0.28, H * 0.355);
+        ctx.fillText(data.ssn, W * 0.37, H * 0.38);
+        ctx.fillText(data.adres, W * 0.44, H * 0.405);
         
-        // CZĘŚĆ II
-        ctx.fillText(data.dataZgonu, 550, 725);
-        ctx.fillText(data.godzinaZgonu, 1000, 725);
-        ctx.fillText(data.miejsceZgonu, 570, 765);
+        ctx.fillText(data.dataZgonu, W * 0.44, H * 0.46);
+        ctx.fillText(data.godzinaZgonu, W * 0.85, H * 0.46);
+        ctx.fillText(data.miejsceZgonu, W * 0.48, H * 0.485);
         
-        if (data.typMiejsca === 'Szpital') ctx.fillText('X', 330, 805);
-        if (data.typMiejsca === 'Karetka') ctx.fillText('X', 475, 805);
-        if (data.typMiejsca === 'Miejsce zdarzenia') ctx.fillText('X', 615, 805);
+        // Sekcja miejsc zgonu [X]
+        if (data.typMiejsca === 'Szpital') ctx.fillText('X', W * 0.25, H * 0.51);
+        if (data.typMiejsca === 'Karetka') ctx.fillText('X', W * 0.36, H * 0.51);
+        if (data.typMiejsca === 'Miejsce zdarzenia') ctx.fillText('X', W * 0.47, H * 0.51);
         
-        // CZĘŚĆ III (Opisy)
-        ctx.font = '35px "RecznePismo", sans-serif'; 
-        ctx.fillText(data.bezposrednia, 100, 950); 
-        ctx.fillText(data.wyjsciowa, 100, 1030);
-        ctx.fillText(data.opis, 100, 1110);
+        // Mniejsza czcionka dla długich opisów (X5 nadal, ale * 0.85)
+        ctx.font = `${Math.floor(baseFontSize * 0.85)}px "RecznePismo", sans-serif`; 
+        ctx.fillText(data.bezposrednia, W * 0.08, H * 0.58);
+        ctx.fillText(data.wyjsciowa, W * 0.08, H * 0.64);
+        ctx.fillText(data.opis, W * 0.08, H * 0.69);
         
-        ctx.font = '40px "RecznePismo", sans-serif'; 
-        if (data.sekcja === 'TAK') ctx.fillText('X', 495, 1180);
-        if (data.sekcja === 'NIE') ctx.fillText('X', 600, 1180);
+        // Powrót do pełnego rozmiaru GIGANTYCZNEGO X5
+        ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
+        if (data.sekcja === 'TAK') ctx.fillText('X', W * 0.42, H * 0.735);
+        if (data.sekcja === 'NIE') ctx.fillText('X', W * 0.50, H * 0.735);
 
-        // CZĘŚĆ IV
-        ctx.fillText(data.stopien, 420, 1270);
-        ctx.fillText(data.lekarz, 300, 1310);
-        ctx.fillText(data.odznaka, 470, 1350);
-        ctx.fillText(data.dataSporzadzenia, 450, 1390);
-        
-        ctx.font = '55px "RecznePismo", sans-serif'; 
-        ctx.fillText(data.podpis, 480, 1490); 
+        ctx.fillText(data.stopien, W * 0.32, H * 0.795);
+        ctx.fillText(data.lekarz, W * 0.28, H * 0.82);
+        ctx.fillText(data.odznaka, W * 0.38, H * 0.845);
+        ctx.fillText(data.dataSporzadzenia, W * 0.38, H * 0.87);
+        ctx.fillText(data.podpis, W * 0.40, H * 0.935); 
 
-        // Pieczątka
-        ctx.drawImage(stampImage, 780, 1130, 320, 320); 
+        // Pieczątka skalowana
+        const stampSize = W * 0.25; 
+        ctx.drawImage(stampImage, W * 0.68, H * 0.75, stampSize, stampSize); 
 
         const buffer = canvas.toBuffer('image/png');
         const attachment = new AttachmentBuilder(buffer, { name: `${sygnatura}.png` });
