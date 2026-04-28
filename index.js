@@ -66,7 +66,7 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// --- API 3: AKT ZGONU (PRECYZYJNE SKALOWANIE POD AKT_BASE.PNG) ---
+// --- API 3: AKT ZGONU (GIGANTYCZNE SKALOWANIE) ---
 app.post('/api/akt-zgonu', async (req, res) => {
     try {
         if (!channelsConfig.aktZgonu) return res.status(400).send({ error: 'Brak kanału!' });
@@ -84,16 +84,21 @@ app.post('/api/akt-zgonu', async (req, res) => {
         const W = canvas.width;
         const H = canvas.height;
         
-        // Dynamiczna, precyzyjna wielkość czcionki (nieco większa niż druk na dokumencie)
-        const baseFontSize = Math.floor(H * 0.028); 
+        // =========================================================
+        // TUTAJ ZMIENIASZ WIELKOŚĆ CZCIONKI!
+        // Ustawione na 0.1 zgodnie z prośbą (10% wysokości)
+        // =========================================================
+        const fontSizeMultiplier = 0.1; 
+        
+        const baseFontSize = Math.floor(H * fontSizeMultiplier); 
         ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
         ctx.fillStyle = '#1e3a8a'; // Tusz długopisu (granatowy)
         
         const sygnatura = `AG-${new Date().getFullYear()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
 
-        // === PRECYZYJNE KOORDYNATY ZGODNE Z AKT_BASE.PNG ===
+        // === KOORDYNATY ZGODNE Z AKT_BASE.PNG ===
         
-        ctx.fillText(sygnatura, W * 0.455, H * 0.268); // Sygnatura akt
+        ctx.fillText(sygnatura, W * 0.455, H * 0.268); 
         
         // CZĘŚĆ I
         ctx.fillText(data.imie, W * 0.135, H * 0.323); 
@@ -112,9 +117,9 @@ app.post('/api/akt-zgonu', async (req, res) => {
         if (data.typMiejsca === 'Karetka') ctx.fillText('X', W * 0.395, H * 0.505);
         if (data.typMiejsca === 'Miejsce zdarzenia') ctx.fillText('X', W * 0.510, H * 0.505);
         
-        // CZĘŚĆ III (Opisy - lekko mniejsza czcionka, żeby się zmieściły)
+        // CZĘŚĆ III (Opisy - lekko mniejsza czcionka)
         ctx.font = `${Math.floor(baseFontSize * 0.85)}px "RecznePismo", sans-serif`; 
-        ctx.fillText(data.bezposrednia, W * 0.085, H * 0.592); // Pisze na pierwszej kropkowanej linii pod nagłówkiem
+        ctx.fillText(data.bezposrednia, W * 0.085, H * 0.592); 
         ctx.fillText(data.wyjsciowa, W * 0.085, H * 0.642);
         ctx.fillText(data.opis, W * 0.085, H * 0.692);
         
@@ -129,12 +134,12 @@ app.post('/api/akt-zgonu', async (req, res) => {
         ctx.fillText(data.odznaka, W * 0.395, H * 0.842);
         ctx.fillText(data.dataSporzadzenia, W * 0.375, H * 0.867);
         
-        // Czytelny podpis (nieco większy jak na podpis przystało)
-        ctx.font = `${Math.floor(baseFontSize * 1.3)}px "RecznePismo", sans-serif`; 
+        // Czytelny podpis (1.5x większy)
+        ctx.font = `${Math.floor(baseFontSize * 1.5)}px "RecznePismo", sans-serif`; 
         ctx.fillText(data.podpis, W * 0.405, H * 0.932); 
 
-        // Pieczątka skalowana i nakładana w prawym dolnym rogu (obok podpisu)
-        const stampSize = W * 0.22; // Pieczątka zajmuje 22% szerokości
+        // Pieczątka skalowana
+        const stampSize = W * 0.22; 
         ctx.drawImage(stampImage, W * 0.65, H * 0.70, stampSize, stampSize); 
 
         const buffer = canvas.toBuffer('image/png');
