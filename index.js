@@ -2,42 +2,29 @@ const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle,
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
-const { createCanvas, loadImage, registerFont } = require('canvas');
 
 // ================= USTAWIENIA =================
 const BOT_TOKEN = process.env.BOT_TOKEN; 
 const PORT = process.env.PORT || 3000;
 // ==============================================
 
-// Wczytanie czcionki odręcznej z pliku font.ttf (musi istnieć w repozytorium)
-if (fs.existsSync('./font.ttf')) {
-    registerFont('./font.ttf', { family: 'RecznePismo' });
-}
-
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const app = express();
 
+// Zwiększamy limit danych, bo będziemy przesyłać gotowe zdjęcie w Base64
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); 
 
-// Baza danych kanałów
+// Baza danych
 const CONFIG_FILE = './config.json';
 let channelsConfig = { podania: null, wyniki: null, aktZgonu: null };
-if (fs.existsSync(CONFIG_FILE)) {
-    channelsConfig = JSON.parse(fs.readFileSync(CONFIG_FILE));
-} else {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig));
-}
+if (fs.existsSync(CONFIG_FILE)) { channelsConfig = JSON.parse(fs.readFileSync(CONFIG_FILE)); } 
+else { fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig)); }
 
-// Baza danych kont
 const KONTA_FILE = './konta.json';
 let kontaConfig = {};
-if (fs.existsSync(KONTA_FILE)) {
-    kontaConfig = JSON.parse(fs.readFileSync(KONTA_FILE));
-} else {
-    kontaConfig = { "Zarzad": "EMS123" }; 
-    fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig));
-}
+if (fs.existsSync(KONTA_FILE)) { kontaConfig = JSON.parse(fs.readFileSync(KONTA_FILE)); } 
+else { kontaConfig = { "Zarzad": "EMS123" }; fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig)); }
 
 // --- API 1: PODAŃ ---
 app.post('/api/apply', async (req, res) => {
@@ -50,93 +37,32 @@ app.post('/api/apply', async (req, res) => {
         );
         await hrChannel.send({ embeds: req.body.embeds, components: [row] });
         res.status(200).send({ message: 'Wysłano' });
-    } catch (e) { 
-        console.error(e);
-        res.status(500).send({ error: 'Błąd serwera' }); 
-    }
+    } catch (e) { res.status(500).send({ error: 'Błąd serwera' }); }
 });
 
 // --- API 2: LOGOWANIE ---
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-    if (kontaConfig[username] && kontaConfig[username] === password) {
-        res.status(200).send({ success: true });
-    } else {
-        res.status(401).send({ success: false });
-    }
+    if (kontaConfig[username] && kontaConfig[username] === password) res.status(200).send({ success: true });
+    else res.status(401).send({ success: false });
 });
 
-// --- API 3: AKT ZGONU (GENERATOR GIGANTYCZNEGO TEKSTU X5) ---
+// --- API 3: AKT ZGONU (ODBIERANIE GOTOWEGO ZDJĘCIA ZE STRONY WWW) ---
 app.post('/api/akt-zgonu', async (req, res) => {
     try {
         if (!channelsConfig.aktZgonu) return res.status(400).send({ error: 'Brak kanału!' });
         
-        const data = req.body;
+        const data = req.body; // Odbieramy dane ze strony
         
-        const baseImage = await loadImage('./akt_base.png');
-        const stampImage = await loadImage('./stamp.png');
-        
-        const canvas = createCanvas(baseImage.width, baseImage.height);
-        const ctx = canvas.getContext('2d');
-        
-        ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
-        
-        const W = canvas.width;
-        const H = canvas.height;
-        
-        // GIGANTYCZNY ROZMIAR CZCIONKI (Ustawione na 5.0 - 500% wysokości obrazka)
-        const baseFontSize = Math.floor(H * 5.0); 
-        ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
-        ctx.fillStyle = '#1e3a8a'; 
-        
-        const sygnatura = `AG-${new Date().getFullYear()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-
-        // Rysowanie tekstu na proporcjonalnych współrzędnych
-        ctx.fillText(sygnatura, W * 0.46, H * 0.28); 
-        
-        ctx.fillText(data.imie, W * 0.13, H * 0.33); 
-        ctx.fillText(data.nazwisko, W * 0.58, H * 0.33);
-        ctx.fillText(data.dataUr, W * 0.28, H * 0.355);
-        ctx.fillText(data.ssn, W * 0.37, H * 0.38);
-        ctx.fillText(data.adres, W * 0.44, H * 0.405);
-        
-        ctx.fillText(data.dataZgonu, W * 0.44, H * 0.46);
-        ctx.fillText(data.godzinaZgonu, W * 0.85, H * 0.46);
-        ctx.fillText(data.miejsceZgonu, W * 0.48, H * 0.485);
-        
-        // Sekcja miejsc zgonu [X]
-        if (data.typMiejsca === 'Szpital') ctx.fillText('X', W * 0.25, H * 0.51);
-        if (data.typMiejsca === 'Karetka') ctx.fillText('X', W * 0.36, H * 0.51);
-        if (data.typMiejsca === 'Miejsce zdarzenia') ctx.fillText('X', W * 0.47, H * 0.51);
-        
-        // Mniejsza czcionka dla długich opisów (X5 nadal, ale * 0.85)
-        ctx.font = `${Math.floor(baseFontSize * 0.85)}px "RecznePismo", sans-serif`; 
-        ctx.fillText(data.bezposrednia, W * 0.08, H * 0.58);
-        ctx.fillText(data.wyjsciowa, W * 0.08, H * 0.64);
-        ctx.fillText(data.opis, W * 0.08, H * 0.69);
-        
-        // Powrót do pełnego rozmiaru GIGANTYCZNEGO X5
-        ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
-        if (data.sekcja === 'TAK') ctx.fillText('X', W * 0.42, H * 0.735);
-        if (data.sekcja === 'NIE') ctx.fillText('X', W * 0.50, H * 0.735);
-
-        ctx.fillText(data.stopien, W * 0.32, H * 0.795);
-        ctx.fillText(data.lekarz, W * 0.28, H * 0.82);
-        ctx.fillText(data.odznaka, W * 0.38, H * 0.845);
-        ctx.fillText(data.dataSporzadzenia, W * 0.38, H * 0.87);
-        ctx.fillText(data.podpis, W * 0.40, H * 0.935); 
-
-        // Pieczątka skalowana
-        const stampSize = W * 0.25; 
-        ctx.drawImage(stampImage, W * 0.68, H * 0.75, stampSize, stampSize); 
-
-        const buffer = canvas.toBuffer('image/png');
-        const attachment = new AttachmentBuilder(buffer, { name: `${sygnatura}.png` });
+        // Magia: Przerabiamy kod Base64 (zdjęcie ze strony) na prawdziwy plik PNG
+        const imageBuffer = Buffer.from(data.imageBase64.replace(/^data:image\/\w+;base64,/, ""), 'base64');
+        const attachment = new AttachmentBuilder(imageBuffer, { name: `${data.sygnatura}.png` });
 
         const embed = new EmbedBuilder()
-            .setTitle(`📜 Wystawiono Nowy Akt Zgonu: ${sygnatura}`)
-            .setDescription(`**Zmarły:** ${data.imie} ${data.nazwisko}\n**Lekarz:** ${data.stopien} ${data.lekarz} (${data.odznaka})`)
+            .setTitle(`📜 Wystawiono Nowy Akt Zgonu: ${data.sygnatura}`)
+            .setDescription(`**Zmarły:** ${data.imie} ${data.nazwisko}\n**Lekarz Wystawiający:** ${data.lekarz}`)
             .setColor(0x000000)
+            .setImage(`attachment://${data.sygnatura}.png`) // Wklejamy zrobiony screen do wiadomości
             .setTimestamp();
 
         const kanal = await client.channels.fetch(channelsConfig.aktZgonu);
@@ -145,12 +71,11 @@ app.post('/api/akt-zgonu', async (req, res) => {
         res.status(200).send({ success: true });
     } catch (error) {
         console.error(error);
-        res.status(500).send({ error: 'Błąd generowania' });
+        res.status(500).send({ error: 'Błąd po stronie bota' });
     }
 });
 
 client.on('interactionCreate', async interaction => {
-    
     if (interaction.isChatInputCommand() && interaction.commandName === 'podania') {
         if (!interaction.memberPermissions.has('Administrator')) return interaction.reply({ content: 'Brak uprawnień.', ephemeral: true });
         channelsConfig.podania = interaction.options.getChannel('kanal_podan').id;
@@ -169,7 +94,6 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand() && interaction.commandName === 'konto') {
         if (!interaction.memberPermissions.has('Administrator')) return interaction.reply({ content: 'Brak uprawnień.', ephemeral: true });
         const subCmd = interaction.options.getSubcommand();
-
         if (subCmd === 'dodaj') {
             const login = interaction.options.getString('login');
             const haslo = interaction.options.getString('haslo');
@@ -183,9 +107,7 @@ client.on('interactionCreate', async interaction => {
                 delete kontaConfig[login];
                 fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig));
                 await interaction.reply({ content: `✅ Usunięto konto: **${login}**`, ephemeral: true });
-            } else {
-                await interaction.reply({ content: `❌ Nie znaleziono konta: ${login}`, ephemeral: true });
-            }
+            } else { await interaction.reply({ content: `❌ Nie znaleziono konta: ${login}`, ephemeral: true }); }
         }
         else if (subCmd === 'lista') {
             const loginy = Object.keys(kontaConfig);
@@ -197,26 +119,18 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         const [action, discordNick] = interaction.customId.split('_');
         if (action === 'done') return; 
-
         if (!channelsConfig.wyniki) return interaction.reply({ content: 'Ustaw kanał wyników!', ephemeral: true });
-
         const wynikiChannel = await client.channels.fetch(channelsConfig.wyniki);
-
         const disabledRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('done_accept').setLabel(action === 'accept' ? 'ZAAKCEPTOWANE' : 'ZAAKCEPTUJ').setStyle(action === 'accept' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(true),
             new ButtonBuilder().setCustomId('done_reject').setLabel(action === 'reject' ? 'ODRZUCONE' : 'ODRZUĆ').setStyle(action === 'reject' ? ButtonStyle.Danger : ButtonStyle.Secondary).setDisabled(true),
         );
         await interaction.update({ components: [disabledRow] });
-
         const resultEmbed = new EmbedBuilder()
             .setTitle('🩺 DECYZJA REKRUTACYJNA EMS')
             .setDescription(`Podanie gracza: **${discordNick}** zostało rozpatrzone.`)
-            .addFields(
-                { name: 'Status:', value: action === 'accept' ? '✅ **ZAAKCEPTOWANE**' : '❌ **ODRZUCONE**' },
-                { name: 'Rozpatrzył:', value: `<@${interaction.user.id}>` }
-            )
+            .addFields({ name: 'Status:', value: action === 'accept' ? '✅ **ZAAKCEPTOWANE**' : '❌ **ODRZUCONE**' }, { name: 'Rozpatrzył:', value: `<@${interaction.user.id}>` })
             .setColor(action === 'accept' ? 0x10b981 : 0xef4444);
-
         await wynikiChannel.send({ embeds: [resultEmbed] });
     }
 });
@@ -224,29 +138,15 @@ client.on('interactionCreate', async interaction => {
 client.once('ready', async () => {
     console.log(`Bot zalogowany jako ${client.user.tag}`);
     const commands = [
-        {
-            name: 'podania', description: 'Konfiguracja kanałów', options: [
-                { name: 'kanal_podan', type: 7, description: 'Kanał na podania', required: true },
-                { name: 'kanal_wynikow', type: 7, description: 'Kanał na wyniki', required: true }
-            ]
-        },
-        {
-            name: 'ustawaktzgonu', description: 'Ustaw kanał Aktów Zgonu', options: [
-                { name: 'kanal_aktu', type: 7, description: 'Wybierz kanał', required: true }
-            ]
-        },
-        {
-            name: 'konto', description: 'Zarządzanie kontami ratowników na stronę WWW', options: [
-                { name: 'dodaj', type: 1, description: 'Nowe konto', options: [{ name: 'login', type: 3, description: 'Login', required: true }, { name: 'haslo', type: 3, description: 'Hasło', required: true }] },
-                { name: 'usun', type: 1, description: 'Usuń konto', options: [{ name: 'login', type: 3, description: 'Login', required: true }] },
-                { name: 'lista', type: 1, description: 'Lista kont' }
-            ]
-        }
+        { name: 'podania', description: 'Konfiguracja kanałów', options: [{ name: 'kanal_podan', type: 7, description: 'Kanał', required: true }, { name: 'kanal_wynikow', type: 7, description: 'Kanał', required: true }] },
+        { name: 'ustawaktzgonu', description: 'Ustaw kanał Aktów Zgonu', options: [{ name: 'kanal_aktu', type: 7, description: 'Kanał', required: true }] },
+        { name: 'konto', description: 'Zarządzanie kontami', options: [
+            { name: 'dodaj', type: 1, description: 'Nowe konto', options: [{ name: 'login', type: 3, description: 'Login', required: true }, { name: 'haslo', type: 3, description: 'Hasło', required: true }] },
+            { name: 'usun', type: 1, description: 'Usuń konto', options: [{ name: 'login', type: 3, description: 'Login', required: true }] },
+            { name: 'lista', type: 1, description: 'Lista kont' }
+        ]}
     ];
     await client.application.commands.set(commands);
 });
 
-app.listen(PORT, () => {
-    console.log(`Serwer wystartował na porcie ${PORT}`);
-    client.login(BOT_TOKEN);
-});
+app.listen(PORT, () => { client.login(BOT_TOKEN); });
