@@ -66,7 +66,7 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// --- API 3: AKT ZGONU (GIGANTYCZNE SKALOWANIE) ---
+// --- API 3: AKT ZGONU (MNOŻNIK = 5) ---
 app.post('/api/akt-zgonu', async (req, res) => {
     try {
         if (!channelsConfig.aktZgonu) return res.status(400).send({ error: 'Brak kanału!' });
@@ -85,10 +85,9 @@ app.post('/api/akt-zgonu', async (req, res) => {
         const H = canvas.height;
         
         // =========================================================
-        // TUTAJ ZMIENIASZ WIELKOŚĆ CZCIONKI!
-        // Ustawione na 0.1 zgodnie z prośbą (10% wysokości)
+        // JEST 5. BEZ LITOŚCI. 
         // =========================================================
-        const fontSizeMultiplier = 0.1; 
+        const fontSizeMultiplier = 5; 
         
         const baseFontSize = Math.floor(H * fontSizeMultiplier); 
         ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
@@ -96,7 +95,7 @@ app.post('/api/akt-zgonu', async (req, res) => {
         
         const sygnatura = `AG-${new Date().getFullYear()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
 
-        // === KOORDYNATY ZGODNE Z AKT_BASE.PNG ===
+        // === KOORDYNATY ===
         
         ctx.fillText(sygnatura, W * 0.455, H * 0.268); 
         
@@ -112,18 +111,18 @@ app.post('/api/akt-zgonu', async (req, res) => {
         ctx.fillText(data.godzinaZgonu, W * 0.835, H * 0.452);
         ctx.fillText(data.miejsceZgonu, W * 0.475, H * 0.478);
         
-        // Zaznaczanie X w nawiasach kwadratowych [ ]
+        // Zaznaczanie X
         if (data.typMiejsca === 'Szpital') ctx.fillText('X', W * 0.276, H * 0.505);
         if (data.typMiejsca === 'Karetka') ctx.fillText('X', W * 0.395, H * 0.505);
         if (data.typMiejsca === 'Miejsce zdarzenia') ctx.fillText('X', W * 0.510, H * 0.505);
         
-        // CZĘŚĆ III (Opisy - lekko mniejsza czcionka)
+        // CZĘŚĆ III (Opisy)
         ctx.font = `${Math.floor(baseFontSize * 0.85)}px "RecznePismo", sans-serif`; 
         ctx.fillText(data.bezposrednia, W * 0.085, H * 0.592); 
         ctx.fillText(data.wyjsciowa, W * 0.085, H * 0.642);
         ctx.fillText(data.opis, W * 0.085, H * 0.692);
         
-        // Sekcja zwłok [ ]
+        // Sekcja zwłok 
         ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
         if (data.sekcja === 'TAK') ctx.fillText('X', W * 0.413, H * 0.738);
         if (data.sekcja === 'NIE') ctx.fillText('X', W * 0.500, H * 0.738);
@@ -134,11 +133,11 @@ app.post('/api/akt-zgonu', async (req, res) => {
         ctx.fillText(data.odznaka, W * 0.395, H * 0.842);
         ctx.fillText(data.dataSporzadzenia, W * 0.375, H * 0.867);
         
-        // Czytelny podpis (1.5x większy)
-        ctx.font = `${Math.floor(baseFontSize * 1.5)}px "RecznePismo", sans-serif`; 
+        // Czytelny podpis
+        ctx.font = `${Math.floor(baseFontSize * 1.3)}px "RecznePismo", sans-serif`; 
         ctx.fillText(data.podpis, W * 0.405, H * 0.932); 
 
-        // Pieczątka skalowana
+        // Pieczątka
         const stampSize = W * 0.22; 
         ctx.drawImage(stampImage, W * 0.65, H * 0.70, stampSize, stampSize); 
 
