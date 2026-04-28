@@ -1,7 +1,7 @@
 {
   "name": "ems-bot",
   "version": "1.0.0",
-  "description": "Bot rekrutacyjny EMS",
+  "description": "Bot rekrutacyjny EMS z generatorem Aktów Zgonu",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,6 +9,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "discord.js": "^14.14.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "canvas": "^2.11.2"
   }
 }
