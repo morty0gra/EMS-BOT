@@ -87,7 +87,7 @@ app.post('/api/akt-zgonu', async (req, res) => {
         // =========================================================
         // JEST 5. BEZ LITOŚCI. 
         // =========================================================
-        const fontSizeMultiplier = 5; 
+        const fontSizeMultiplier = 50; 
         
         const baseFontSize = Math.floor(H * fontSizeMultiplier); 
         ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
