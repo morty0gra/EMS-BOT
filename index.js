@@ -9,7 +9,6 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 3000;
 // ==============================================
 
-// Wczytanie czcionki odręcznej z pliku font.ttf
 if (fs.existsSync('./font.ttf')) {
     registerFont('./font.ttf', { family: 'RecznePismo' });
 }
@@ -20,24 +19,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Baza danych kanałów
 const CONFIG_FILE = './config.json';
 let channelsConfig = { podania: null, wyniki: null, aktZgonu: null };
-if (fs.existsSync(CONFIG_FILE)) {
-    channelsConfig = JSON.parse(fs.readFileSync(CONFIG_FILE));
-} else {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig));
-}
+if (fs.existsSync(CONFIG_FILE)) { channelsConfig = JSON.parse(fs.readFileSync(CONFIG_FILE)); } 
+else { fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig)); }
 
-// Baza danych kont
 const KONTA_FILE = './konta.json';
 let kontaConfig = {};
-if (fs.existsSync(KONTA_FILE)) {
-    kontaConfig = JSON.parse(fs.readFileSync(KONTA_FILE));
-} else {
-    kontaConfig = { "Zarzad": "EMS123" }; 
-    fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig));
-}
+if (fs.existsSync(KONTA_FILE)) { kontaConfig = JSON.parse(fs.readFileSync(KONTA_FILE)); } 
+else { kontaConfig = { "Zarzad": "EMS123" }; fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig)); }
 
 // --- API 1: PODAŃ ---
 app.post('/api/apply', async (req, res) => {
@@ -50,97 +40,153 @@ app.post('/api/apply', async (req, res) => {
         );
         await hrChannel.send({ embeds: req.body.embeds, components: [row] });
         res.status(200).send({ message: 'Wysłano' });
-    } catch (e) { 
-        console.error(e);
-        res.status(500).send({ error: 'Błąd serwera' }); 
-    }
+    } catch (e) { res.status(500).send({ error: 'Błąd serwera' }); }
 });
 
 // --- API 2: LOGOWANIE ---
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-    if (kontaConfig[username] && kontaConfig[username] === password) {
-        res.status(200).send({ success: true });
-    } else {
-        res.status(401).send({ success: false });
-    }
+    if (kontaConfig[username] && kontaConfig[username] === password) res.status(200).send({ success: true });
+    else res.status(401).send({ success: false });
 });
 
-// --- API 3: AKT ZGONU (MNOŻNIK = 5) ---
+// --- API 3: AKT ZGONU (GENEROWANIE KARTKI OD ZERA) ---
 app.post('/api/akt-zgonu', async (req, res) => {
     try {
         if (!channelsConfig.aktZgonu) return res.status(400).send({ error: 'Brak kanału!' });
-        
         const data = req.body;
         
-        const baseImage = await loadImage('./akt_base.png');
-        const stampImage = await loadImage('./stamp.png');
-        
-        const canvas = createCanvas(baseImage.width, baseImage.height);
+        // 1. Sztywna rozdzielczość kartki A4
+        const W = 1200;
+        const H = 1600;
+        const canvas = createCanvas(W, H);
         const ctx = canvas.getContext('2d');
         
-        ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
+        // Tło kartki (delikatnie kremowa biel)
+        ctx.fillStyle = '#fcfbf7'; 
+        ctx.fillRect(0, 0, W, H);
         
-        const W = canvas.width;
-        const H = canvas.height;
+        // 2. Ładowanie Logo EMS i Pieczątki
+        try {
+            const emsLogo = await loadImage('./logo.png');
+            // Rysujemy logo na górze, na środku
+            ctx.drawImage(emsLogo, W/2 - 75, 40, 150, 150); 
+        } catch (e) {
+            console.log("Brak pliku logo.png na GitHubie, pomijam logo.");
+        }
+
+        // 3. Nagłówek dokumentu
+        ctx.fillStyle = '#000000'; 
+        ctx.textAlign = 'center';
         
-        // =========================================================
-        // JEST 5. BEZ LITOŚCI. 
-        // =========================================================
-        const fontSizeMultiplier = 50; 
+        ctx.font = 'bold 38px sans-serif';
+        ctx.fillText('LOS SANTOS EMERGENCY MEDICAL SERVICES', W/2, 230);
+        ctx.font = '24px sans-serif';
+        ctx.fillText('Wydział Medycyny Sądowej i Patologii', W/2, 270);
+        ctx.fillText('Departament Koronera', W/2, 305);
         
-        const baseFontSize = Math.floor(H * fontSizeMultiplier); 
-        ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
-        ctx.fillStyle = '#1e3a8a'; // Tusz długopisu (granatowy)
+        ctx.font = 'bold 48px sans-serif';
+        ctx.fillText('OFICJALNY AKT ZGONU (KARTA ZGONU)', W/2, 380);
         
         const sygnatura = `AG-${new Date().getFullYear()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+        ctx.font = '22px sans-serif';
+        ctx.fillText(`Sygnatura akt: ${sygnatura}`, W/2, 420);
 
-        // === KOORDYNATY ===
+        // Kreska oddzielająca
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(80, 440); ctx.lineTo(1120, 440); ctx.stroke();
         
-        ctx.fillText(sygnatura, W * 0.455, H * 0.268); 
+        // 4. Mechanizm pisania (Czarny Druk + Niebieskie Pismo Odręczne)
+        ctx.textAlign = 'left';
         
-        // CZĘŚĆ I
-        ctx.fillText(data.imie, W * 0.135, H * 0.323); 
-        ctx.fillText(data.nazwisko, W * 0.590, H * 0.323);
-        ctx.fillText(data.dataUr, W * 0.285, H * 0.348);
-        ctx.fillText(data.ssn, W * 0.385, H * 0.373);
-        ctx.fillText(data.adres, W * 0.415, H * 0.398);
-        
-        // CZĘŚĆ II
-        ctx.fillText(data.dataZgonu, W * 0.465, H * 0.452);
-        ctx.fillText(data.godzinaZgonu, W * 0.835, H * 0.452);
-        ctx.fillText(data.miejsceZgonu, W * 0.475, H * 0.478);
-        
-        // Zaznaczanie X
-        if (data.typMiejsca === 'Szpital') ctx.fillText('X', W * 0.276, H * 0.505);
-        if (data.typMiejsca === 'Karetka') ctx.fillText('X', W * 0.395, H * 0.505);
-        if (data.typMiejsca === 'Miejsce zdarzenia') ctx.fillText('X', W * 0.510, H * 0.505);
-        
-        // CZĘŚĆ III (Opisy)
-        ctx.font = `${Math.floor(baseFontSize * 0.85)}px "RecznePismo", sans-serif`; 
-        ctx.fillText(data.bezposrednia, W * 0.085, H * 0.592); 
-        ctx.fillText(data.wyjsciowa, W * 0.085, H * 0.642);
-        ctx.fillText(data.opis, W * 0.085, H * 0.692);
-        
-        // Sekcja zwłok 
-        ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
-        if (data.sekcja === 'TAK') ctx.fillText('X', W * 0.413, H * 0.738);
-        if (data.sekcja === 'NIE') ctx.fillText('X', W * 0.500, H * 0.738);
+        function drawField(label, value, x, y, customFont = '45px') {
+            // Czarny druk (pytanie)
+            ctx.font = 'bold 24px sans-serif';
+            ctx.fillStyle = '#000000';
+            ctx.fillText(label, x, y);
+            
+            // Obliczamy gdzie kończy się pytanie, żeby zacząć odpowiedź
+            const labelWidth = ctx.measureText(label).width;
+            
+            // Niebieski długopis (odpowiedź)
+            ctx.font = `${customFont} "RecznePismo", cursive, sans-serif`;
+            ctx.fillStyle = '#1e3a8a'; 
+            ctx.fillText(value || 'Brak danych', x + labelWidth + 15, y);
+        }
 
-        // CZĘŚĆ IV
-        ctx.fillText(data.stopien, W * 0.355, H * 0.792);
-        ctx.fillText(data.lekarz, W * 0.245, H * 0.817);
-        ctx.fillText(data.odznaka, W * 0.395, H * 0.842);
-        ctx.fillText(data.dataSporzadzenia, W * 0.375, H * 0.867);
+        // --- CZĘŚĆ I ---
+        ctx.font = 'bold 28px sans-serif';
+        ctx.fillStyle = '#000000';
+        ctx.fillText('CZĘŚĆ I: DANE IDENTYFIKACYJNE ZMARŁEGO', 80, 500);
         
-        // Czytelny podpis
-        ctx.font = `${Math.floor(baseFontSize * 1.3)}px "RecznePismo", sans-serif`; 
-        ctx.fillText(data.podpis, W * 0.405, H * 0.932); 
+        drawField('Imię:', data.imie, 80, 550);
+        drawField('Nazwisko:', data.nazwisko, 600, 550);
+        drawField('Data urodzenia:', data.dataUr, 80, 600);
+        drawField('Numer SSN:', data.ssn, 600, 600);
+        drawField('Ostatni adres zamieszkania:', data.adres, 80, 650);
 
-        // Pieczątka
-        const stampSize = W * 0.22; 
-        ctx.drawImage(stampImage, W * 0.65, H * 0.70, stampSize, stampSize); 
+        ctx.beginPath(); ctx.moveTo(80, 680); ctx.lineTo(1120, 680); ctx.stroke();
 
+        // --- CZĘŚĆ II ---
+        ctx.font = 'bold 28px sans-serif';
+        ctx.fillStyle = '#000000';
+        ctx.fillText('CZĘŚĆ II: CZAS I MIEJSCE ZGONU', 80, 730);
+        
+        drawField('Data zgonu:', data.dataZgonu, 80, 780);
+        drawField('Godzina:', data.godzinaZgonu, 600, 780);
+        drawField('Miejsce zgonu (adres):', data.miejsceZgonu, 80, 830);
+        drawField('Zgon nastąpił w:', data.typMiejsca, 80, 880);
+
+        ctx.beginPath(); ctx.moveTo(80, 910); ctx.lineTo(1120, 910); ctx.stroke();
+
+        // --- CZĘŚĆ III ---
+        ctx.font = 'bold 28px sans-serif';
+        ctx.fillStyle = '#000000';
+        ctx.fillText('CZĘŚĆ III: PRZYCZYNA ZGONU', 80, 960);
+        
+        drawField('1. Bezpośrednia przyczyna zgonu:', data.bezposrednia, 80, 1010, '35px');
+        drawField('2. Wyjściowa przyczyna zgonu:', data.wyjsciowa, 80, 1060, '35px');
+        drawField('3. Krótki opis obrażeń:', data.opis, 80, 1110, '35px');
+        drawField('Czy przeprowadzono sekcję zwłok?', data.sekcja, 80, 1160);
+
+        ctx.beginPath(); ctx.moveTo(80, 1190); ctx.lineTo(1120, 1190); ctx.stroke();
+
+        // --- CZĘŚĆ IV ---
+        ctx.font = 'bold 28px sans-serif';
+        ctx.fillStyle = '#000000';
+        ctx.fillText('CZĘŚĆ IV: DANE WYSTAWIAJĄCEGO', 80, 1240);
+        
+        drawField('Stopień Medyczny:', data.stopien, 80, 1290);
+        drawField('Imię i Nazwisko:', data.lekarz, 550, 1290);
+        drawField('Numer Odznaki:', data.odznaka, 80, 1340);
+        drawField('Data sporządzenia:', data.dataSporzadzenia, 550, 1340);
+        
+        // Podpis Lekarza na samym dole
+        ctx.font = 'bold 26px sans-serif';
+        ctx.fillStyle = '#000000';
+        ctx.fillText('Czytelny podpis lekarza/koronera:', 80, 1480);
+        
+        ctx.font = '60px "RecznePismo", cursive, sans-serif';
+        ctx.fillStyle = '#1e3a8a';
+        ctx.fillText(data.podpis, 500, 1480);
+
+        // 5. Nakładanie pieczątki z pliku w prawym dolnym rogu
+        try {
+            const stampImage = await loadImage('./stamp.png');
+            ctx.drawImage(stampImage, 850, 1250, 280, 280); 
+        } catch (e) {
+            console.log("Problem z wczytaniem pieczątki stamp.png.");
+        }
+
+        // 6. Stopka dokumentu
+        ctx.textAlign = 'center';
+        ctx.font = 'italic 18px serif';
+        ctx.fillStyle = '#4b5563'; // Szary kolor stopki
+        ctx.fillText('Dokument stanowi własność stanową San Andreas. Podrabianie, modyfikowanie lub używanie bez', W/2, 1550);
+        ctx.fillText('autoryzacji Los Santos Emergency Medical Services podlega karze pozbawienia wolności.', W/2, 1575);
+
+        // 7. Zapis do obrazka i wysłanie na Discord
         const buffer = canvas.toBuffer('image/png');
         const attachment = new AttachmentBuilder(buffer, { name: `${sygnatura}.png` });
 
