@@ -66,7 +66,7 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// --- API 3: AKT ZGONU (GENERATOR PNG) ---
+// --- API 3: AKT ZGONU (GENERATOR PNG Z AUTO-SKALOWANIEM) ---
 app.post('/api/akt-zgonu', async (req, res) => {
     try {
         if (!channelsConfig.aktZgonu) return res.status(400).send({ error: 'Brak kanału!' });
@@ -81,40 +81,55 @@ app.post('/api/akt-zgonu', async (req, res) => {
         
         ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
         
-        // Zastosowanie naszej nowej czcionki z pliku
-        ctx.font = '40px "RecznePismo", sans-serif'; 
-        ctx.fillStyle = '#1e3a8a'; // Kolor ciemnoniebieskiego długopisu
+        // Zmienne do proporcjonalnego układania tekstu (niezależnie od rozmiaru PNG)
+        const W = canvas.width;
+        const H = canvas.height;
+        
+        // Automatyczny rozmiar czcionki (około 2.5% wysokości dokumentu)
+        const baseFontSize = Math.floor(H * 0.025);
+        ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
+        ctx.fillStyle = '#1e3a8a'; // Ciemnoniebieski tusz
         
         const sygnatura = `AG-${new Date().getFullYear()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
 
-        ctx.fillText(sygnatura, 550, 275); 
-        ctx.fillText(data.imie, 120, 355); 
-        ctx.fillText(data.nazwisko, 600, 355);
-        ctx.fillText(data.dataUr, 260, 395);
-        ctx.fillText(data.ssn, 330, 435);
-        ctx.fillText(data.adres, 420, 475);
-        ctx.fillText(data.dataZgonu, 450, 545);
-        ctx.fillText(data.godzinaZgonu, 850, 545);
-        ctx.fillText(data.miejsceZgonu, 440, 585);
-        ctx.fillText(data.typMiejsca, 240, 625); 
+        // Rysowanie tekstu na wyliczonych procentach (Szerokość, Wysokość)
+        ctx.fillText(sygnatura, W * 0.46, H * 0.28); 
         
-        // Mniejsza czcionka do opisów obrażeń
-        ctx.font = '32px "RecznePismo", sans-serif'; 
-        ctx.fillText(data.bezposrednia, 80, 710);
-        ctx.fillText(data.wyjsciowa, 80, 780);
-        ctx.fillText(data.opis, 80, 850);
+        ctx.fillText(data.imie, W * 0.13, H * 0.33); 
+        ctx.fillText(data.nazwisko, W * 0.58, H * 0.33);
+        ctx.fillText(data.dataUr, W * 0.28, H * 0.355);
+        ctx.fillText(data.ssn, W * 0.37, H * 0.38);
+        ctx.fillText(data.adres, W * 0.44, H * 0.405);
         
-        ctx.font = '40px "RecznePismo", sans-serif';
-        ctx.fillText(data.sekcja === 'TAK' ? 'X' : '', 450, 955); 
-        ctx.fillText(data.sekcja === 'NIE' ? 'X' : '', 560, 955); 
+        ctx.fillText(data.dataZgonu, W * 0.44, H * 0.46);
+        ctx.fillText(data.godzinaZgonu, W * 0.85, H * 0.46);
+        ctx.fillText(data.miejsceZgonu, W * 0.48, H * 0.485);
+        
+        // Zaznaczanie krzyżyka "X" w odpowiednim miejscu
+        if (data.typMiejsca === 'Szpital') ctx.fillText('X', W * 0.25, H * 0.51);
+        if (data.typMiejsca === 'Karetka') ctx.fillText('X', W * 0.36, H * 0.51);
+        if (data.typMiejsca === 'Miejsce zdarzenia') ctx.fillText('X', W * 0.47, H * 0.51);
+        
+        // Mniejsza czcionka dla długich opisów
+        ctx.font = `${Math.floor(baseFontSize * 0.85)}px "RecznePismo", sans-serif`; 
+        ctx.fillText(data.bezposrednia, W * 0.08, H * 0.58);
+        ctx.fillText(data.wyjsciowa, W * 0.08, H * 0.64);
+        ctx.fillText(data.opis, W * 0.08, H * 0.69);
+        
+        // Powrót do normalnej czcionki
+        ctx.font = `${baseFontSize}px "RecznePismo", sans-serif`; 
+        if (data.sekcja === 'TAK') ctx.fillText('X', W * 0.42, H * 0.735);
+        if (data.sekcja === 'NIE') ctx.fillText('X', W * 0.50, H * 0.735);
 
-        ctx.fillText(data.stopien, 380, 1025);
-        ctx.fillText(data.lekarz, 300, 1065);
-        ctx.fillText(data.odznaka, 420, 1105);
-        ctx.fillText(data.dataSporzadzenia, 400, 1145);
-        ctx.fillText(data.podpis, 440, 1225); 
+        ctx.fillText(data.stopien, W * 0.32, H * 0.795);
+        ctx.fillText(data.lekarz, W * 0.28, H * 0.82);
+        ctx.fillText(data.odznaka, W * 0.38, H * 0.845);
+        ctx.fillText(data.dataSporzadzenia, W * 0.38, H * 0.87);
+        ctx.fillText(data.podpis, W * 0.40, H * 0.935); 
 
-        ctx.drawImage(stampImage, 750, 1000, 250, 250); 
+        // Pieczątka skalowana i nakładana w prawym dolnym rogu
+        const stampSize = W * 0.25; // Pieczątka zajmie 25% szerokości strony
+        ctx.drawImage(stampImage, W * 0.68, H * 0.75, stampSize, stampSize); 
 
         const buffer = canvas.toBuffer('image/png');
         const attachment = new AttachmentBuilder(buffer, { name: `${sygnatura}.png` });
