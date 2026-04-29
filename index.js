@@ -11,10 +11,18 @@ const PORT = process.env.PORT || 3000;
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const app = express();
 
-// KLUCZOWE: Zwiększamy limit danych do 50MB, żeby strona mogła wysłać zdjęcie HD!
+// KLUCZOWE: Zwiększamy limit danych do 50MB, żeby bot mógł przyjąć zdjęcie w jakości HD!
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); 
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// ==========================================
+// FIX DLA CRON-JOB.ORG (ZAPOBIEGA BŁĘDOM 404)
+// Kiedy cron wchodzi na stronę, bot odpowiada statusem 200 (OK).
+// ==========================================
+app.get('/', (req, res) => {
+    res.status(200).send('BOT EMS DZIALA POPRAWNIE! (Pinging OK)');
+});
 
 // Baza danych kanałów
 const CONFIG_FILE = './config.json';
@@ -60,7 +68,7 @@ app.post('/api/akt-zgonu', async (req, res) => {
         const data = req.body;
         if (!data.imageBase64) return res.status(400).send({ error: 'Brak obrazu od strony WWW!' });
         
-        // Magia: Przerabiamy kod Base64 (długi tekst ze strony) na prawdziwy plik PNG
+        // Przerabiamy kod Base64 (długi tekst ze strony) na prawdziwy plik PNG
         const imageBuffer = Buffer.from(data.imageBase64.replace(/^data:image\/\w+;base64,/, ""), 'base64');
         const attachment = new AttachmentBuilder(imageBuffer, { name: `${data.sygnatura}.png` });
 
