@@ -6,35 +6,45 @@ const fs = require('fs');
 // ================= USTAWIENIA =================
 const BOT_TOKEN = process.env.BOT_TOKEN; 
 const PORT = process.env.PORT || 3000;
+const OWNER_ID = '1111596074562494524'; // <-- TWOJE ID (God Mode)
 // ==============================================
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const app = express();
 
-// KLUCZOWE: Zwiększamy limit danych do 50MB, żeby bot mógł przyjąć zdjęcie w jakości HD!
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); 
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// ==========================================
-// FIX DLA CRON-JOB.ORG (ZAPOBIEGA BŁĘDOM 404)
-// Kiedy cron wchodzi na stronę, bot odpowiada statusem 200 (OK).
-// ==========================================
+// Fix dla Cron-job.org
 app.get('/', (req, res) => {
     res.status(200).send('BOT EMS DZIALA POPRAWNIE! (Pinging OK)');
 });
 
-// Baza danych kanałów
+// Baza danych kanałów i uprawnień
 const CONFIG_FILE = './config.json';
-let channelsConfig = { podania: null, wyniki: null, aktZgonu: null };
-if (fs.existsSync(CONFIG_FILE)) { channelsConfig = JSON.parse(fs.readFileSync(CONFIG_FILE)); } 
-else { fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig)); }
+let channelsConfig = { podania: null, wyniki: null, aktZgonu: null, dozwoloneRangi: [] };
+if (fs.existsSync(CONFIG_FILE)) { 
+    channelsConfig = JSON.parse(fs.readFileSync(CONFIG_FILE)); 
+    if (!channelsConfig.dozwoloneRangi) channelsConfig.dozwoloneRangi = []; // Zabezpieczenie na wypadek starego pliku
+} else { 
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig)); 
+}
 
 // Baza danych kont
 const KONTA_FILE = './konta.json';
 let kontaConfig = {};
 if (fs.existsSync(KONTA_FILE)) { kontaConfig = JSON.parse(fs.readFileSync(KONTA_FILE)); } 
 else { kontaConfig = { "Zarzad": "EMS123" }; fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig)); }
+
+// --- FUNKCJA SPRAWDZAJĄCA UPRAWNIENIA ---
+function maUprawnienia(interaction) {
+    if (interaction.user.id === OWNER_ID) return true; // Ty zawsze możesz wszystko
+    if (!channelsConfig.dozwoloneRangi || channelsConfig.dozwoloneRangi.length === 0) return false; // Nikt inny, jeśli nie dodano rang
+    
+    // Sprawdza, czy gracz ma jedną z dozwolonych rang
+    return channelsConfig.dozwoloneRangi.some(rolaId => interaction.member.roles.cache.has(rolaId));
+}
 
 // --- API 1: PODAŃ (Rekrutacja) ---
 app.post('/api/apply', async (req, res) => {
@@ -68,19 +78,16 @@ app.post('/api/akt-zgonu', async (req, res) => {
         const data = req.body;
         if (!data.imageBase64) return res.status(400).send({ error: 'Brak obrazu od strony WWW!' });
         
-        // Przerabiamy kod Base64 (długi tekst ze strony) na prawdziwy plik PNG
         const imageBuffer = Buffer.from(data.imageBase64.replace(/^data:image\/\w+;base64,/, ""), 'base64');
         const attachment = new AttachmentBuilder(imageBuffer, { name: `${data.sygnatura}.png` });
 
-        // Tworzymy ładną wiadomość
         const embed = new EmbedBuilder()
             .setTitle(`📜 Wystawiono Nowy Akt Zgonu: ${data.sygnatura}`)
             .setDescription(`**Zmarły:** ${data.imie} ${data.nazwisko}\n**Lekarz Wystawiający:** ${data.lekarz}`)
             .setColor(0x000000)
-            .setImage(`attachment://${data.sygnatura}.png`) // Wklejamy odebrany zrzut ekranu
+            .setImage(`attachment://${data.sygnatura}.png`)
             .setTimestamp();
 
-        // Wysyłamy na kanał
         const kanal = await client.channels.fetch(channelsConfig.aktZgonu);
         await kanal.send({ embeds: [embed], files: [attachment] });
 
@@ -92,50 +99,86 @@ app.post('/api/akt-zgonu', async (req, res) => {
 });
 
 client.on('interactionCreate', async interaction => {
-    if (interaction.isChatInputCommand() && interaction.commandName === 'podania') {
-        if (!interaction.memberPermissions.has('Administrator')) return interaction.reply({ content: 'Brak uprawnień.', ephemeral: true });
-        channelsConfig.podania = interaction.options.getChannel('kanal_podan').id;
-        channelsConfig.wyniki = interaction.options.getChannel('kanal_wynikow').id;
-        fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig));
-        await interaction.reply({ content: `✅ Kanały skonfigurowane pomyślnie!`, ephemeral: true });
-    }
-
-    if (interaction.isChatInputCommand() && interaction.commandName === 'ustawaktzgonu') {
-        if (!interaction.memberPermissions.has('Administrator')) return interaction.reply({ content: 'Brak uprawnień.', ephemeral: true });
-        channelsConfig.aktZgonu = interaction.options.getChannel('kanal_aktu').id;
-        fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig));
-        await interaction.reply({ content: `✅ Akty Zgonu będą wysyłane na <#${channelsConfig.aktZgonu}>!`, ephemeral: true });
-    }
-
-    if (interaction.isChatInputCommand() && interaction.commandName === 'konto') {
-        if (!interaction.memberPermissions.has('Administrator')) return interaction.reply({ content: 'Brak uprawnień.', ephemeral: true });
-        const subCmd = interaction.options.getSubcommand();
-        if (subCmd === 'dodaj') {
-            const login = interaction.options.getString('login');
-            const haslo = interaction.options.getString('haslo');
-            kontaConfig[login] = haslo;
-            fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig));
-            await interaction.reply({ content: `✅ Utworzono konto.\n**Login:** ${login}\n**Hasło:** ${haslo}`, ephemeral: true });
+    // --- OBSŁUGA KOMEND (UKOŚNIKI) ---
+    if (interaction.isChatInputCommand()) {
+        
+        // Zabezpieczenie całej bazy komend - odrzuć, jeśli to nie Ty i brak rangi
+        if (!maUprawnienia(interaction)) {
+            return interaction.reply({ content: '❌ **Odmowa dostępu.** Nie masz uprawnień do korzystania z tego bota.', ephemeral: true });
         }
-        else if (subCmd === 'usun') {
-            const login = interaction.options.getString('login');
-            if (kontaConfig[login]) {
-                delete kontaConfig[login];
+
+        if (interaction.commandName === 'podania') {
+            channelsConfig.podania = interaction.options.getChannel('kanal_podan').id;
+            channelsConfig.wyniki = interaction.options.getChannel('kanal_wynikow').id;
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig));
+            await interaction.reply({ content: `✅ Kanały rekrutacji skonfigurowane pomyślnie!`, ephemeral: true });
+        }
+
+        if (interaction.commandName === 'ustawaktzgonu') {
+            channelsConfig.aktZgonu = interaction.options.getChannel('kanal_aktu').id;
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig));
+            await interaction.reply({ content: `✅ Akty Zgonu będą wysyłane na <#${channelsConfig.aktZgonu}>!`, ephemeral: true });
+        }
+
+        if (interaction.commandName === 'uprawnienia') {
+            const subCmd = interaction.options.getSubcommand();
+            if (subCmd === 'dodaj') {
+                const rola = interaction.options.getRole('ranga');
+                if (!channelsConfig.dozwoloneRangi.includes(rola.id)) {
+                    channelsConfig.dozwoloneRangi.push(rola.id);
+                    fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig));
+                }
+                await interaction.reply({ content: `✅ Ranga <@&${rola.id}> otrzymała uprawnienia do obsługi bota!`, ephemeral: true });
+            }
+            else if (subCmd === 'usun') {
+                const rola = interaction.options.getRole('ranga');
+                channelsConfig.dozwoloneRangi = channelsConfig.dozwoloneRangi.filter(id => id !== rola.id);
+                fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsConfig));
+                await interaction.reply({ content: `✅ Ranga <@&${rola.id}> straciła uprawnienia.`, ephemeral: true });
+            }
+            else if (subCmd === 'lista') {
+                if (channelsConfig.dozwoloneRangi.length === 0) return interaction.reply({ content: 'Brak dozwolonych rang. Tylko Ty masz dostęp.', ephemeral: true });
+                const lista = channelsConfig.dozwoloneRangi.map(id => `- <@&${id}>`).join('\n');
+                await interaction.reply({ content: `📝 **Rangi z dostępem:**\n${lista}`, ephemeral: true });
+            }
+        }
+
+        if (interaction.commandName === 'konto') {
+            const subCmd = interaction.options.getSubcommand();
+            if (subCmd === 'dodaj') {
+                const login = interaction.options.getString('login');
+                const haslo = interaction.options.getString('haslo');
+                kontaConfig[login] = haslo;
                 fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig));
-                await interaction.reply({ content: `✅ Usunięto konto: **${login}**`, ephemeral: true });
-            } else { await interaction.reply({ content: `❌ Nie znaleziono konta: ${login}`, ephemeral: true }); }
-        }
-        else if (subCmd === 'lista') {
-            const loginy = Object.keys(kontaConfig);
-            if (loginy.length === 0) return interaction.reply({ content: 'Brak kont.', ephemeral: true });
-            await interaction.reply({ content: `📝 **Lista kont (loginy):**\n${loginy.map(l => `- ${l}`).join('\n')}`, ephemeral: true });
+                await interaction.reply({ content: `✅ Utworzono konto do bazy danych.\n**Login:** ${login}\n**Hasło:** ${haslo}`, ephemeral: true });
+            }
+            else if (subCmd === 'usun') {
+                const login = interaction.options.getString('login');
+                if (kontaConfig[login]) {
+                    delete kontaConfig[login];
+                    fs.writeFileSync(KONTA_FILE, JSON.stringify(kontaConfig));
+                    await interaction.reply({ content: `✅ Usunięto konto: **${login}**`, ephemeral: true });
+                } else { await interaction.reply({ content: `❌ Nie znaleziono konta: ${login}`, ephemeral: true }); }
+            }
+            else if (subCmd === 'lista') {
+                const loginy = Object.keys(kontaConfig);
+                if (loginy.length === 0) return interaction.reply({ content: 'Brak kont.', ephemeral: true });
+                await interaction.reply({ content: `📝 **Lista kont (loginy):**\n${loginy.map(l => `- ${l}`).join('\n')}`, ephemeral: true });
+            }
         }
     }
 
+    // --- OBSŁUGA PRZYCISKÓW (ZAAKCEPTUJ / ODRZUĆ) ---
     if (interaction.isButton()) {
+        
+        // Nikt poza Tobą i dozwolonymi rangami nie może klikać w podania!
+        if (!maUprawnienia(interaction)) {
+            return interaction.reply({ content: '❌ **Odmowa dostępu.** Nie masz uprawnień do sprawdzania podań!', ephemeral: true });
+        }
+
         const [action, discordNick] = interaction.customId.split('_');
         if (action === 'done') return; 
-        if (!channelsConfig.wyniki) return interaction.reply({ content: 'Ustaw kanał wyników!', ephemeral: true });
+        if (!channelsConfig.wyniki) return interaction.reply({ content: 'Ustaw najpierw kanał wyników!', ephemeral: true });
         
         const wynikiChannel = await client.channels.fetch(channelsConfig.wyniki);
         
@@ -161,9 +204,15 @@ client.on('interactionCreate', async interaction => {
 client.once('ready', async () => {
     console.log(`Bot zalogowany jako ${client.user.tag}`);
     const commands = [
-        { name: 'podania', description: 'Konfiguracja kanałów', options: [{ name: 'kanal_podan', type: 7, description: 'Kanał na podania', required: true }, { name: 'kanal_wynikow', type: 7, description: 'Kanał na wyniki', required: true }] },
-        { name: 'ustawaktzgonu', description: 'Ustaw kanał Aktów Zgonu', options: [{ name: 'kanal_aktu', type: 7, description: 'Wybierz kanał', required: true }] },
-        { name: 'konto', description: 'Zarządzanie kontami ratowników na stronę WWW', options: [
+        { name: 'podania', description: 'Konfiguracja kanałów (Wymagane uprawnienia)', options: [{ name: 'kanal_podan', type: 7, description: 'Kanał na podania', required: true }, { name: 'kanal_wynikow', type: 7, description: 'Kanał na wyniki', required: true }] },
+        { name: 'ustawaktzgonu', description: 'Ustaw kanał Aktów Zgonu (Wymagane uprawnienia)', options: [{ name: 'kanal_aktu', type: 7, description: 'Wybierz kanał', required: true }] },
+        { name: 'uprawnienia', description: 'Zarządzaj rangami, które mają dostęp do bota', options: [
+            // Typ 8 oznacza w Discord API dokładnie "Wybór Rangi"
+            { name: 'dodaj', type: 1, description: 'Zezwól randze na używanie bota', options: [{ name: 'ranga', type: 8, description: 'Wybierz rangę', required: true }] },
+            { name: 'usun', type: 1, description: 'Zabierz randze dostęp do bota', options: [{ name: 'ranga', type: 8, description: 'Wybierz rangę', required: true }] },
+            { name: 'lista', type: 1, description: 'Pokaż rangi z dostępem' }
+        ]},
+        { name: 'konto', description: 'Zarządzanie kontami ratowników na stronę WWW (Wymagane uprawnienia)', options: [
             { name: 'dodaj', type: 1, description: 'Nowe konto', options: [{ name: 'login', type: 3, description: 'Login', required: true }, { name: 'haslo', type: 3, description: 'Hasło', required: true }] },
             { name: 'usun', type: 1, description: 'Usuń konto', options: [{ name: 'login', type: 3, description: 'Login', required: true }] },
             { name: 'lista', type: 1, description: 'Lista kont' }
